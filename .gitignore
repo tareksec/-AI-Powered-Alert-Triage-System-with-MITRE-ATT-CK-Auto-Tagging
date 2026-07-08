@@ -1,0 +1,36 @@
+# Security / API Keys (CRITICAL)
+config.py
+.env
+secret*.txt
+
+# Python Virtual Environments
+venv/
+env/
+.venv/
+env.bak/
+
+# Python Cache & Byte-compiled / Optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Database
+*.sqlite3
+*.db
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor Files
+.vscode/
+.idea/
+*.swp
+
+# Streamlit (If applicable for your dashboard)
+.streamlit/
+
+# Local Data / Logs (Optional: uncomment if you don't want to push generated logs/alerts)
+# *.log
+# data/enriched_alerts.json
