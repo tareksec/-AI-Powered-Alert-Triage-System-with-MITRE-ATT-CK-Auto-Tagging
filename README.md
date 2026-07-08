@@ -1,106 +1,110 @@
-# 🛡️ SOC Sentinel — AI-Powered Alert Triage with MITRE ATT&CK Auto-Tagging
+# 🛡️ SOC Sentinel — Alert Triage Dashboard with MITRE ATT&CK Auto-Tagging
 
-A Security Operations Center (SOC) console that ingests raw security alerts, classifies each one with **OpenAI (gpt-4o-mini)** as a real threat or false positive, auto-tags real threats with the matching **MITRE ATT&CK** technique, and renders everything in a live, dark-mode Streamlit dashboard — backed end-to-end by PostgreSQL.
+A Security Operations Center (SOC) console that pulls live alerts from a **Wazuh** SIEM deployment, auto-tags each one with its **MITRE ATT&CK** technique, and renders everything in a dark-mode Streamlit dashboard built for fast triage — severity breakdown, top techniques, top affected hosts, and a full alert queue.
+
+Deployed and tested end-to-end on a live Wazuh instance (Azure VM), ingesting real alert traffic.
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B)
-![OpenAI](https://img.shields.io/badge/OpenAI-gpt--4o--mini-412991)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791)
+![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1BA0D7)
 ![MITRE ATT&CK](https://img.shields.io/badge/MITRE-ATT%26CK-red)
+
+---
+
 ## Demo
 
-![SOC Sentinel Dashboard](docs/screenshots/Screenshot_6.png)
-*Live triage queue with MITRE ATT&CK auto-tagging, running against a real Wazuh SIEM feed.*
+**SOC Sentinel — KPI overview and top techniques**
 
-![Wazuh source data](docs/screenshots/Screenshot_2.png)
-*Underlying Wazuh Threat Hunting view — 11,893 alerts, brute-force/SSH activity mapped to MITRE ATT&CK.*
+![SOC Sentinel dashboard overview](docs/screenshots/Screenshot_6.png)
+*Live KPI cards (total alerts, critical threats, pending triage, MITRE enrichment coverage), top-10 MITRE ATT&CK techniques by volume, and top affected agents — running against a real Wazuh feed with 11,893+ alerts.*
+
+**Alert Triage Queue**
+
+![Alert triage queue table](docs/screenshots/alert-triage-queue.png)
+*Full alert table — severity badges, high-severity rows glow, and every enriched row is tagged with its MITRE technique ID and name.*
+
+**A single triaged alert, close up**
+
+![Single alert detail]()
+*Alert ID, rule description, severity, and resolved MITRE technique (ID + name) for one row.*
+
+**Underlying Wazuh source data**
+
+![Wazuh Threat Hunting dashboard](docs/screenshots/Screenshot_2.png)
+*Wazuh's own built-in Threat Hunting view — the raw SIEM feed SOC Sentinel ingests from. MITRE tagging here comes from Wazuh's native rule engine (`rule.mitre.id`), which SOC Sentinel then pulls, re-processes, and re-presents in its own triage-focused UI.*
 
 ---
 
 ## Problem
 
-SOC analysts spend a huge chunk of their day manually deciding whether an alert is a real threat or noise — one third of the average SOC workday goes to investigating alerts that turn out to be false positives. Most alert-triage tools stop at severity (Critical/High/Medium/Low), leaving the analyst to figure out *what kind of attack* they're actually looking at.
+SOC analysts spend a huge chunk of their day staring at raw alert queues — a wall of rule descriptions and severity numbers with no framework context. Knowing an alert fired is only half the picture; knowing **which adversary technique it maps to** (T1059, T1110, T1566...) is what actually drives triage priority and response.
 
-**SOC Sentinel** goes a step further: every alert is classified by an LLM acting as a senior SOC analyst, and every confirmed real threat is auto-tagged with its **MITRE ATT&CK technique ID** — so the analyst knows immediately what adversary behavior to investigate (e.g. `T1059` — Command and Scripting Interpreter), not just how urgent it looks.
+**SOC Sentinel** closes that gap: it ingests Wazuh's alert feed, resolves every MITRE-tagged alert into a human-readable technique name and tactic, and surfaces it all in a dashboard built for fast triage instead of a raw JSON dump.
 
 ## What it does
 
-- **Ingests raw alerts** from a live Wazuh SIEM (via the Indexer's REST API) or from a synthetic sample generator, and lands them in PostgreSQL as `pending`
-- **Classifies each alert with OpenAI** (`gpt-4o-mini`) using a structured, senior-SOC-analyst prompt that returns a strict JSON verdict: real threat vs. false positive, severity, MITRE technique ID, confidence score, and a one-to-two sentence justification
-- **Enriches MITRE technique IDs** into human-readable names, tactics, and mitigations using a locally-cached copy of the official MITRE ATT&CK Enterprise dataset — no external API call needed at render time
-- **Serves a live dashboard** that queries PostgreSQL directly on every load: KPI cards, a top-techniques chart, top affected agents, and a full triage queue
+- **Pulls alerts from a live Wazuh Indexer** (OpenSearch REST API) via `wazuh_fetcher.py`
+- **Reads the MITRE ATT&CK technique ID Wazuh already assigned** to each alert (`rule.mitre.id`)
+- **Enriches technique IDs** into human-readable names + tactics using a local MITRE ATT&CK reference table (`mitre_data.json`) — no external API call needed at render time
+- **Maps numeric rule levels to severity labels** (Critical / High / Medium / Low / Info)
+- **Visualizes everything** in a Streamlit dashboard: KPI cards, top-10 technique chart, top affected agents, and a color-coded triage queue table
 
 ## Architecture
 
 ```
-                 ┌─────────────────────┐
-Wazuh Indexer ──▶│ wazuh_fetcher.py     │──┐
-(OpenSearch API) └─────────────────────┘  │
-                                            ├──▶ database.insert_raw_alert()
-                 ┌─────────────────────┐  │        │
-Sample data ────▶│ load_sample_alerts.py│──┘        ▼
-generator        └─────────────────────┘   PostgreSQL `alerts` table
-                                             (triage_status = 'pending')
-                                                     │
-                                                     ▼
-                                            ai_triage.py
-                                            ├─ database.get_pending_alerts()
-                                            ├─ OpenAI (gpt-4o-mini) verdict
-                                            └─ database.save_triage_result()
-                                                     │
-                                          (same row updated in place,
-                                           triage_status = 'triaged')
-                                                     │
-                                                     ▼
-                                            app.py (Streamlit)
-                                            ├─ database.get_all_alerts()
-                                            └─ database.get_summary_stats()
-                                                     │
-                                                     ▼
-                                          SOC Sentinel Dashboard
+Wazuh Indexer (OpenSearch)
+        │  _search REST API
+        ▼
+ wazuh_fetcher.py  ──writes──▶  data/enriched_alerts.json
+        │                              │
+ mitre_data.json  ──local lookup──▶  app.py (Streamlit)
+                                       │
+                                       ▼
+                              SOC Sentinel Dashboard
 ```
 
-MITRE ATT&CK enrichment (`mitre_attack_fetcher.py` → `mitre_data.json`) runs independently and is consulted by both `ai_triage.py` (to validate technique IDs) and `app.py` (to resolve technique names/tactics for display).
+`wazuh_fetcher.py` queries the Wazuh Indexer directly and writes a flat JSON feed. `app.py` reads that JSON file on every load (cached), joins each `technique_id` against the local `mitre_data.json` lookup table, and renders the dashboard — no database in this deployment.
 
 ## Tech Stack
 
 | Layer | Tool |
 |---|---|
-| SIEM data source | Wazuh (Indexer / OpenSearch REST API) — or synthetic sample alerts |
-| Database | PostgreSQL |
-| AI classification | OpenAI API (`gpt-4o-mini`) |
-| Threat framework data | MITRE ATT&CK Enterprise (official STIX dataset, cached locally) |
-| Dashboard | Streamlit + Plotly |
+| SIEM data source | Wazuh (Indexer / OpenSearch REST API) |
+| Fetch script | Python + `requests` |
+| Threat framework data | MITRE ATT&CK Enterprise (local JSON, `mitre_data.json`) |
+| Data processing | Pandas |
+| Dashboard | Streamlit |
+| Charts | Plotly |
 
 ## Repo structure
 
 ```
 .
-├── app.py                      # Streamlit dashboard — queries Postgres live, renders UI
-├── database.py                 # All Postgres access: schema, insert, fetch, save-triage, stats
-├── ai_triage.py                 # Pulls pending alerts, classifies via OpenAI, writes verdicts back
-├── config.py                    # OPENAI_API_KEY + model name
-├── wazuh_fetcher.py              # Pulls alerts from a live Wazuh Indexer into Postgres
-├── load_sample_alerts.py         # Generates/loads synthetic alerts into Postgres for demo/testing
-├── generate_sample_alerts.py     # Synthetic alert generator used by load_sample_alerts.py
-├── mitre_attack_fetcher.py       # Builds mitre_data.json from the official MITRE ATT&CK STIX bundle
-├── mitre_data.json               # Local technique_id -> {name, tactic, ...} lookup table
-├── .streamlit/                   # Dark theme + server config
-└── pyproject.toml / uv.lock      # Dependencies
+├── app.py                     # Streamlit dashboard — layout, styling, data logic
+├── wazuh_fetcher.py            # CLI script: pulls alerts from a live Wazuh Indexer
+├── mitre_data.json             # Local MITRE ATT&CK technique -> {name, tactic} lookup
+├── data/
+│   └── enriched_alerts.json    # Alert feed the dashboard reads (written by wazuh_fetcher.py)
+├── .streamlit/
+│   └── config.toml             # Dark theme + server config
+└── pyproject.toml / uv.lock    # Dependencies
 ```
 
-## Database schema (`alerts` table, via `database.py`)
+## Alert schema
 
-Key columns include: `source_alert_id`, `rule_description`, `level`, `agent_name`, `raw_log`, `triage_status` (`pending` / `triaged` / `failed`), `is_real_threat`, `severity`, `mitre_technique_id`, `ai_confidence`, `ai_reasoning`.
+Every alert in `data/enriched_alerts.json` follows this shape:
 
-| Function | Purpose |
-|---|---|
-| `init_schema()` | Creates the `alerts` table + indexes if missing |
-| `insert_raw_alert(alert)` | Inserts one pending raw alert, deduplicated on `source_alert_id` |
-| `get_pending_alerts(limit=200)` | Fetches untriaged rows for `ai_triage.py` |
-| `save_triage_result(alert_id, result, status)` | Writes the AI's verdict onto an existing row |
-| `get_all_alerts(limit=1000)` | Fetches everything (pending + triaged) for the dashboard |
-| `get_summary_stats()` | Aggregate query for the KPI counts |
+```json
+{
+  "alert_id": "string",
+  "rule_description": "string",
+  "level": 12,
+  "technique_id": "T1110",
+  "agent_name": "WIN-FIN03"
+}
+```
+
+`technique_id` is set to `"UNCLASSIFIED"` if the underlying Wazuh rule has no MITRE mapping.
 
 ## Getting Started
 
@@ -112,74 +116,42 @@ cd -AI-Powered-Alert-Triage-System-with-MITRE-ATT-CK-Auto-Tagging
 pip install -r requirements.txt   # or: uv sync
 ```
 
-### 2. Configure secrets
+### 2. Point it at your Wazuh deployment
 
-Set your PostgreSQL connection string as an environment variable:
-
-```bash
-export DATABASE_URL="postgresql://user:password@host:port/dbname"
-```
-
-Add your OpenAI API key to `config.py`:
-
-```python
-OPENAI_API_KEY = "sk-..."   # never commit a real key — use an env var or secrets manager in production
-MODEL_NAME = "gpt-4o"
-```
-
-> ⚠️ `config.py` currently holds the key as a plain string for local/demo use. For any real deployment, replace this with an environment variable (`os.environ["OPENAI_API_KEY"]`) or your platform's secrets manager, and make sure `config.py` is in `.gitignore` if it ever contains a real key.
-
-### 3. Load alerts
-
-Either pull from a live Wazuh Indexer:
+Set your Wazuh Indexer credentials as environment variables:
 
 ```bash
-export WAZUH_INDEXER_URL="https://localhost:9200"
+export WAZUH_INDEXER_URL="https://<your-wazuh-host>:9200"
 export WAZUH_INDEXER_USER="admin"
 export WAZUH_INDEXER_PASSWORD="your-password"
-python wazuh_fetcher.py
 ```
 
-...or load synthetic sample alerts for a quick demo:
+Then run:
 
 ```bash
-python load_sample_alerts.py --count 50
+python wazuh_fetcher.py --output data/enriched_alerts.json --size 500 --min-level 3
 ```
 
-Both write directly into the Postgres `alerts` table with `triage_status = 'pending'`.
+This queries the Wazuh Indexer's `_search` endpoint, maps each hit into the schema above, and writes it to `data/enriched_alerts.json`. If you skip this step, the dashboard will just read whatever sample data is already in `data/enriched_alerts.json`.
 
-### 4. (Optional) Refresh the MITRE ATT&CK reference data
+### 3. Run the dashboard
 
 ```bash
-python mitre_attack_fetcher.py
+streamlit run app.py --server.port 8501
 ```
 
-### 5. Run AI triage
-
-```bash
-python ai_triage.py
-```
-
-This pulls pending alerts, sends each to OpenAI, and writes the verdict (real threat, severity, MITRE technique, confidence, reasoning) back onto the same row.
-
-### 6. Launch the dashboard
-
-```bash
-streamlit run app.py --server.port 5000
-```
-
-Open `http://localhost:5000`. The dashboard queries PostgreSQL live (15s cache) — no intermediate file, no manual export step.
+Open `http://localhost:8501` in your browser.
 
 ## Dashboard features
 
-- **KPI row** — total alerts, confirmed real threats, false positives, pending triage
-- **Top MITRE ATT&CK Techniques** — bar chart ranked by alert volume
+- **KPI row** — total alerts, critical threats, pending triage (Critical + High), and MITRE enrichment coverage %
+- **Top 10 MITRE ATT&CK Techniques** — horizontal bar chart ranked by alert volume
 - **Top Affected Agents** — which hosts are generating the most alerts
-- **Alert Triage Queue** — full table with severity badges, real-threat rows highlighted, click-through detail with AI reasoning + MITRE context
+- **Alert Triage Queue** — full table, high-severity rows glow, enriched rows tagged with a badge
 
 ## Severity mapping
 
-| Source `level` | Severity |
+| Wazuh `level` | Severity |
 |---|---|
 | ≥ 13 | Critical |
 | ≥ 10 | High |
@@ -187,14 +159,18 @@ Open `http://localhost:5000`. The dashboard queries PostgreSQL live (15s cache) 
 | ≥ 4 | Low |
 | < 4 | Info |
 
-The AI can also assign severity independently as part of its verdict when a technique's real-world impact doesn't match the raw sensor level.
+## Known limitations
+
+- **MITRE tagging is rule-based, not AI-classified.** The technique ID for each alert comes directly from Wazuh's own detection rules (`rule.mitre.id`) — SOC Sentinel enriches and displays it, but doesn't independently decide the technique.
+- **No real-threat vs. false-positive classification yet.** The dashboard shows every alert Wazuh reports above the configured level; it doesn't currently score or filter for likely false positives.
+- **`data/enriched_alerts.json` is a static snapshot**, refreshed by manually re-running `wazuh_fetcher.py` — there's no live polling or auto-refresh yet.
 
 ## Roadmap
 
-- [ ] Mitigation recommendations surfaced per MITRE technique in the detail panel
-- [ ] Docker Compose for one-command Wazuh + Postgres + dashboard spin-up
-- [ ] Scheduled `wazuh_fetcher.py` + `ai_triage.py` runs (cron) instead of manual invocation
-- [ ] Multi-page Streamlit app with a dedicated "Project Details" page
+- [ ] LLM-based classification layer (real threat vs. false positive, independent severity/technique judgment) on top of the existing Wazuh-sourced MITRE tags — in progress on a PostgreSQL-backed branch (`ai_triage.py` + `database.py`, OpenAI `gpt-4o-mini`)
+- [ ] Automatic mitigation recommendations per technique
+- [ ] Docker Compose for one-command Wazuh + dashboard spin-up
+- [ ] Scheduled `wazuh_fetcher.py` runs (cron) instead of manual invocation, or live polling
 
 ## License
 
