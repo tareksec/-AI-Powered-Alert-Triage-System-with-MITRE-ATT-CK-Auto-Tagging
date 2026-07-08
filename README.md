@@ -1,4 +1,4 @@
-![ AI-Powered Alert Triage System with MITRE ATT&CK Auto-Tagging](docs/screenshots/AI_Threat_Triage_System_Timeline.png)
+![ AI-Powered Alert Triage System with MITRE ATT&CK Auto-Tagging](docs/screenshots/Gemini_Generated_Image_824our824our824o.png)
 # 🛡️ SOC Sentinel — Alert Triage Dashboard with MITRE ATT&CK Auto-Tagging
 
 A Security Operations Center (SOC) console that pulls live alerts from a **Wazuh** SIEM deployment, auto-tags each one with its **MITRE ATT&CK** technique, and renders everything in a dark-mode Streamlit dashboard built for fast triage — severity breakdown, top techniques, top affected hosts, and a full alert queue.
