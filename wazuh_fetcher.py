@@ -1,20 +1,24 @@
 """
-wazuh_fetcher.py — Pull alerts from a live Wazuh deployment and write them
-into the schema the SOC Sentinel dashboard (app.py) reads from
-(`data/enriched_alerts.json`).
+wazuh_fetcher.py — Pull raw alerts from a live Wazuh deployment and load
+them into the SOC Sentinel pipeline as PENDING rows in Postgres, ready for
+AI triage (see `ai_triage.py`).
 
 Wazuh stores alerts in the Wazuh Indexer (OpenSearch), not in the manager
 API, so this script queries the indexer's `_search` REST endpoint directly
-and maps each hit into:
+and maps each hit into the same raw-alert shape `generate_sample_alerts.py`
+produces:
 
     {
         "alert_id": str,
         "rule_description": str,
         "level": int,
-        "technique_id": str,      # first MITRE ATT&CK technique on the rule,
-                                   # or "UNCLASSIFIED" if the rule has none
-        "agent_name": str
+        "agent_name": str,
+        "raw_log": str
     }
+
+Note: this script no longer assigns a MITRE technique itself — that
+decision now comes from `ai_triage.py`'s AI classification step, which also
+decides whether the alert is a real threat at all.
 
 Configuration (environment variables — see environment-secrets, do not
 hardcode credentials):
@@ -29,7 +33,8 @@ hardcode credentials):
 
 Usage:
     python wazuh_fetcher.py
-    python wazuh_fetcher.py --output data/enriched_alerts.json --size 500 --min-level 3
+    python wazuh_fetcher.py --size 500 --min-level 3
+    python wazuh_fetcher.py --output data/raw_alerts.json  # dump to file instead of the DB
 """
 
 import argparse
@@ -41,11 +46,12 @@ from pathlib import Path
 import requests
 from requests.auth import HTTPBasicAuth
 
+import database
+
 DEFAULT_INDEX = "wazuh-alerts-*"
-DEFAULT_OUTPUT = "data/enriched_alerts.json"
+DEFAULT_OUTPUT = "data/raw_alerts.json"
 DEFAULT_SIZE = 500
 DEFAULT_MIN_LEVEL = 0
-UNCLASSIFIED = "UNCLASSIFIED"
 
 
 class WazuhFetchError(RuntimeError):
@@ -129,30 +135,24 @@ def fetch_alerts(config: dict, size: int, min_level: int, timeout: int = 30) -> 
 
 
 def map_hit(hit: dict) -> dict:
-    """Convert one Wazuh Indexer search hit into the dashboard's alert schema."""
+    """Convert one Wazuh Indexer search hit into the pipeline's raw-alert schema."""
     source = hit.get("_source", {})
     rule = source.get("rule", {}) or {}
     agent = source.get("agent", {}) or {}
-
-    mitre_ids = rule.get("mitre", {}).get("id") if isinstance(rule.get("mitre"), dict) else None
-    if isinstance(mitre_ids, list) and mitre_ids:
-        technique_id = str(mitre_ids[0])
-    elif isinstance(mitre_ids, str) and mitre_ids:
-        technique_id = mitre_ids
-    else:
-        technique_id = UNCLASSIFIED
 
     try:
         level = int(rule.get("level", 0))
     except (TypeError, ValueError):
         level = 0
 
+    raw_log = source.get("full_log") or json.dumps(source, default=str)[:2000]
+
     return {
         "alert_id": str(hit.get("_id", "unknown")),
         "rule_description": str(rule.get("description", "No description provided")),
         "level": level,
-        "technique_id": technique_id,
         "agent_name": str(agent.get("name", "unknown")),
+        "raw_log": str(raw_log),
     }
 
 
@@ -164,8 +164,14 @@ def write_output(alerts: list, output_path: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Fetch alerts from a Wazuh Indexer into the SOC Sentinel schema.")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help=f"Output JSON path (default: {DEFAULT_OUTPUT})")
+    parser = argparse.ArgumentParser(
+        description="Fetch raw alerts from a Wazuh Indexer and load them into SOC Sentinel as pending triage rows."
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional: also dump raw alerts to this JSON path instead of loading them into the database.",
+    )
     parser.add_argument("--size", type=int, default=DEFAULT_SIZE, help=f"Max alerts to fetch (default: {DEFAULT_SIZE})")
     parser.add_argument(
         "--min-level",
@@ -183,12 +189,21 @@ def main() -> int:
         return 1
 
     alerts = [map_hit(hit) for hit in hits]
-    write_output(alerts, args.output)
 
-    print(f"Fetched {len(alerts)} alert(s) from '{config['index']}' and wrote them to {args.output}")
-    unclassified = sum(1 for a in alerts if a["technique_id"] == UNCLASSIFIED)
-    if unclassified:
-        print(f"Note: {unclassified} alert(s) had no MITRE ATT&CK tag and were marked '{UNCLASSIFIED}'.")
+    if args.output:
+        write_output(alerts, args.output)
+        print(f"Fetched {len(alerts)} alert(s) from '{config['index']}' and wrote them to {args.output}")
+        return 0
+
+    database.init_schema()
+    inserted = sum(1 for alert in alerts if database.insert_raw_alert(alert) is not None)
+    skipped = len(alerts) - inserted
+    print(
+        f"Fetched {len(alerts)} alert(s) from '{config['index']}'. "
+        f"Inserted {inserted} new pending alert(s) into the database"
+        + (f", skipped {skipped} already-seen alert(s)." if skipped else ".")
+    )
+    print("Run `python ai_triage.py` next to classify the new alerts.")
     return 0
 
 
