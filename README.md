@@ -173,6 +173,18 @@ Open `http://localhost:8501` in your browser.
 - [ ] Docker Compose for one-command Wazuh + dashboard spin-up
 - [ ] Scheduled `wazuh_fetcher.py` runs (cron) instead of manual invocation, or live polling
 
-## License
+## 🛠️ Recommendations for Improvement
 
-MIT
+> The following recommendations complement the roadmap above, with a focus on **hardening the current PoC** before scaling it further.
+
+* 🔁 **Error Handling & Retry Logic** — `wazuh_fetcher.py` and the OpenAI API calls should include structured exception handling (timeouts, rate limits, malformed responses) with **exponential backoff on retries**, so a single failed request doesn't silently drop an alert from triage.
+* ✅ **Prompt Validation & Output Schema** — Since triage results feed downstream tagging, enforce a **strict JSON schema** on the LLM's output (e.g. via function calling or Pydantic validation) and reject/re-prompt on malformed responses, rather than trusting free-text output.
+* 🧾 **Logging & Audit Trail** — Add **structured logging** (JSON logs with timestamps, alert IDs, and model responses) so every triage decision is traceable — this is a baseline requirement for any SOC tool and will matter a lot if auto-remediation is added later.
+* 🔐 **Secrets Management** — Ensure API keys (OpenAI, Wazuh) are loaded from **environment variables** or a secrets manager, never hardcoded or committed, and add a `.env.example` file to the repo for onboarding.
+* 🧪 **Unit & Integration Tests** — A small test suite (e.g. `pytest`) covering the fetcher, the tagging logic, and edge cases (empty alerts, API failures) would significantly increase **confidence for anyone evaluating or contributing** to the project.
+* ⚡ **Rate Limiting & Caching** — Cache MITRE ATT&CK technique lookups and **deduplicate near-identical alerts** before sending them to the API, reducing redundant calls and cost even before full batch processing is implemented.
+* ⚙️ **Configuration File** — Move hardcoded values (model name, thresholds, polling interval) into a single `config.yaml` or `.env` file to make the system **easier to tune without touching code**.
+* 🧑‍💻 **Human-in-the-Loop Safeguard** — When auto-remediation is added, gate any firewall/blocking action behind **explicit analyst approval by default**, with auto-execution reserved for a narrowly scoped allow-list of low-risk actions.
+
+> 💡 **Why it matters:** these are incremental, low-effort additions that would strengthen the project's reliability and make it easier for reviewers, contributors, or hiring managers to evaluate the **engineering rigor** behind the PoC.
+
