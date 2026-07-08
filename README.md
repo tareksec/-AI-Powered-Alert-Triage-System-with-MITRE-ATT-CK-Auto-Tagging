@@ -20,12 +20,12 @@ Deployed and tested end-to-end on a live Wazuh instance (Azure VM), ingesting re
 
 **Alert Triage Queue**
 
-![Alert triage queue table](docs/screenshots/alert-triage-queue.png)
+![Alert triage queue table](docs/screenshots/Screenshot_5.png)
 *Full alert table — severity badges, high-severity rows glow, and every enriched row is tagged with its MITRE technique ID and name.*
 
 **A single triaged alert, close up**
 
-![Single alert detail]()
+![Single alert detail](docs/screenshots/Screenshot_4.png)
 *Alert ID, rule description, severity, and resolved MITRE technique (ID + name) for one row.*
 
 **Underlying Wazuh source data**
