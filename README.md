@@ -7,6 +7,13 @@ A Security Operations Center (SOC) console that ingests raw security alerts, cla
 ![OpenAI](https://img.shields.io/badge/OpenAI-gpt--4o--mini-412991)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791)
 ![MITRE ATT&CK](https://img.shields.io/badge/MITRE-ATT%26CK-red)
+## Demo
+
+![SOC Sentinel Dashboard](docs/screenshots/Screenshot_6.png)
+*Live triage queue with MITRE ATT&CK auto-tagging, running against a real Wazuh SIEM feed.*
+
+![Wazuh source data](docs/screenshots/Screenshot_2.png)
+*Underlying Wazuh Threat Hunting view — 11,893 alerts, brute-force/SSH activity mapped to MITRE ATT&CK.*
 
 ---
 
