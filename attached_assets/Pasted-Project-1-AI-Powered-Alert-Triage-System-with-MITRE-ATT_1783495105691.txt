@@ -1,0 +1,12 @@
+Project 1: AI-Powered Alert Triage System with MITRE ATT&CK Auto-Tagging
+What will it do?
+Wazuh will automatically classify security alerts coming from SIEM — real threat or false positive. But not only that, it will automatically tag each real alert with MITRE ATT&CK technique. That means, just by looking at the alert, you will understand whether it is T1059 or T1078 or T1566.
+What is the Unique Twist
+All the Alert Triage projects in the market only say severity — critical, medium, low. Yours will automatically generate MITRE technique ID, tactic name, and recommended mitigation along with severity. When you see this, the interviewer will understand that you don't just know how to run the tool, you understand the threat framework.
+Tech Stack
+Wazuh free version will run on local Docker. It will pull alerts from Wazuh API using Python. It will analyze alerts using OpenAI API and do MITRE mapping. It will store MITRE ATT&CK's official JSON data locally so that technique details can be obtained without API calls. Create a dashboard with Streamlit.
+Step by Step
+Set up Wazuh in Docker. Then generate some test events yourself — failed SSH login, suspicious process execution, port scan. These will be displayed as alerts in Wazuh. At this stage, the goal is just to bring alert data from Wazuh to Python.
+Integrate OpenAI. Send the raw data of each alert to a structured prompt. In the prompt, say that you are a senior SOC analyst, look at this alert and tell us in JSON format — is it a real threat, what is the severity, and which is the most likely MITRE ATT&CK technique. Parse the JSON response and save it in the database.
+Add MITRE enrichment layer. Download the MITRE ATT&CK enterprise JSON file and store it locally. When the AI ​​says T1059, it will automatically pull the description, sub-techniques, and recommended mitigations of that technique from the local file.
+Create a Streamlit dashboard. The dashboard will show — how many total alerts there are today, how many are real threats, how many are false positives, and which MITRE tactics were seen the most. Clicking on each alert will bring up full details.
