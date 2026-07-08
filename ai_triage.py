@@ -10,8 +10,7 @@ verdict back in Postgres:
     - confidence (0-100)
     - reasoning (1-2 sentences)
 
-Requires the OPENAI_API_KEY environment variable (see environment-secrets —
-never hardcode the key). If it's missing, this script exits with a clear
+Requires the OPENAI_API_KEY from config.py. If it's missing, this script exits with a clear
 error instead of silently skipping triage.
 
 Usage:
@@ -27,6 +26,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
+import config
 import database
 
 MITRE_DATA_PATH = Path("mitre_data.json")
@@ -134,10 +134,10 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=200, help="Max number of pending alerts to triage (default: 200)")
     args = parser.parse_args()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    api_key = config.OPENAI_API_KEY
+    if not api_key or api_key == "PASTE_YOUR_API_KEY_HERE":
         print(
-            "Error: OPENAI_API_KEY is not set. Add it in the Secrets pane, then re-run this script.",
+            "Error: OPENAI_API_KEY is not set in config.py. Update it, then re-run this script.",
             file=sys.stderr,
         )
         return 1
