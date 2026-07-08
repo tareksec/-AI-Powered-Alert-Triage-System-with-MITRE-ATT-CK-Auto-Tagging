@@ -24,6 +24,7 @@ st.set_page_config(
 )
 
 DATA_PATH = Path("data/enriched_alerts.json")
+MITRE_DATA_PATH = Path("mitre_data.json")
 
 # --------------------------------------------------------------------------
 # Theme / palette
@@ -278,50 +279,30 @@ def map_severity(level: int) -> str:
     return "Info"
 
 
-# A small set of MITRE ATT&CK technique IDs get a friendly display name.
-# Anything outside this map still renders correctly using the raw ID.
-TECHNIQUE_NAMES = {
-    "T1059.001": "PowerShell",
-    "T1003": "OS Credential Dumping",
-    "T1003.001": "LSASS Memory",
-    "T1053.005": "Scheduled Task",
-    "T1053.003": "Cron Job",
-    "T1071.001": "Web Protocols (C2)",
-    "T1071.004": "DNS (C2)",
-    "T1547.001": "Registry Run Keys",
-    "T1218.011": "Rundll32",
-    "T1110": "Brute Force",
-    "T1110.001": "Password Guessing",
-    "T1021.002": "SMB/Admin Shares",
-    "T1562.001": "Disable Security Tools",
-    "T1562.004": "Disable Firewall",
-    "T1055": "Process Injection",
-    "T1136.001": "Local Account Creation",
-    "T1560.001": "Archive via Utility",
-    "T1105": "Ingress Tool Transfer",
-    "T1558.003": "Kerberoasting",
-    "T1558.001": "Golden Ticket",
-    "T1505.003": "Web Shell",
-    "T1070.001": "Clear Windows Event Logs",
-    "T1041": "Exfil Over C2 Channel",
-    "T1546.003": "WMI Event Subscription",
-    "T1548.003": "Sudo Abuse",
-    "T1134": "Access Token Manipulation",
-    "T1046": "Network Service Discovery",
-    "T1204.002": "Malicious File Execution",
-    "T1027": "Obfuscated Files",
-    "T1048": "Exfil Over Alt Protocol",
-    "T1082": "System Information Discovery",
-    "T1078": "Valid Accounts",
-    "T1078.003": "Cloud/Local Accounts",
-    "T1574.002": "DLL Side-Loading",
-    "T1486": "Data Encrypted for Impact",
-    "T1490": "Inhibit System Recovery",
-    "T1140": "Deobfuscate/Decode",
-}
-
-
 REQUIRED_COLUMNS = {"alert_id", "rule_description", "level", "technique_id"}
+
+
+@st.cache_data(show_spinner=False)
+def load_mitre_data(path: str, _cache_key: float) -> dict:
+    """Load the local MITRE ATT&CK technique reference table.
+
+    Maps technique_id -> {"name": ..., "tactic": ...}. Any technique_id in the
+    alert feed that isn't found here still renders fine, just tagged as
+    "not enriched" and displayed using its raw ID.
+    """
+    if not Path(path).exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+MITRE_DATA = (
+    load_mitre_data(str(MITRE_DATA_PATH), MITRE_DATA_PATH.stat().st_mtime)
+    if MITRE_DATA_PATH.exists()
+    else {}
+)
+TECHNIQUE_NAMES = {tid: info.get("name", tid) for tid, info in MITRE_DATA.items()}
+TECHNIQUE_TACTICS = {tid: info.get("tactic", "") for tid, info in MITRE_DATA.items()}
 
 
 @st.cache_data(show_spinner=False)

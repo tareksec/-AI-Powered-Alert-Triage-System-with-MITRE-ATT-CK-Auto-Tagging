@@ -16,6 +16,16 @@ dark-mode, enterprise-grade dashboard.
 - `data/enriched_alerts.json` — sample alert feed (alert_id, rule_description,
   level, technique_id, agent_name). Replace with real SIEM/enrichment output
   to go live.
+- `mitre_data.json` — local MITRE ATT&CK reference table (technique_id ->
+  name, tactic). `app.py` loads this instead of a hardcoded map; add more
+  technique IDs here as needed.
+- `wazuh_fetcher.py` — standalone CLI script that pulls alerts from a live
+  Wazuh Indexer (OpenSearch REST API) and writes them into
+  `data/enriched_alerts.json` in the schema the dashboard expects. Requires
+  `WAZUH_INDEXER_URL`, `WAZUH_INDEXER_USER`, `WAZUH_INDEXER_PASSWORD` env
+  vars (see script docstring for optional vars). Not wired into the
+  Streamlit workflow — run manually or via cron/scheduled task when you
+  have real Wazuh credentials.
 - `.streamlit/config.toml` — dark theme + server config
 
 ## Running
