@@ -1,5 +1,7 @@
 # 🛡️ SOC Sentinel — AI-Powered Alert Triage with MITRE ATT&CK Auto-Tagging
 
+![Preview of this project](docs/screenshots/Gemini_Generated_Image_824our824our824o.png)
+
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B)
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1BA0D7)
